@@ -145,11 +145,23 @@ series_sf
 Now let's plot it.
 
 ```{r interactive series}
-mapview(series_sf)
+mapview(series_sf,
+        zcol = "muname")
 ```
 
 ```{r static series}
-series_map 
+series_map = ggplot() +
+  geom_sf(data = boundary, alpha = 0.5) +
+  geom_sf(data = series_sf,
+          aes(fill = muname)) +
+  scale_fill_viridis_d() +
+  theme_map() +
+  theme(legend.position = "right") +
+  annotation_scale(location = "bl",
+                   width_hint = 0.4,
+                   pad_y = unit(-0.0001, "in")) +
+  annotation_north_arrow(pad_y = unit(0.2, "in"),
+                         style = north_arrow_fancy_orienteering())
 
 series_map
 ```
@@ -169,10 +181,12 @@ yield_sf <-
   # Joining with the muaggatt tabular data using a common column (musym)
   left_join(soils$tabular$mucropyld, by = "mukey") %>%
   # Cropping to the boundary
-  st_intersection(boundary)
+  st_intersection(boundary) %>%
   # Selecting only needed columns  
+  select(mukey, cropname, yldunits, nonirryield.r, geom) %>%
 
-    # Only keeping corn
+    # Only keeping cotton lint
+  filter(cropname=="Cotton lint")
 
 yield_sf 
 
@@ -188,7 +202,7 @@ yield_map <- ggplot() +
   geom_sf(data = series_sf) +
   geom_sf(data = yield_sf, aes(fill = nonirryield.r)) +
   scale_fill_viridis_b(option = "A") +
-  labs(fill = "Corn yield (bu/ac)") +
+  labs(fill = "Cotton yield (bu/ac)") +
   theme_map() +
   theme(legend.position = "right") 
 
@@ -197,7 +211,10 @@ yield_map
 
 # Elevation  
 ```{r elevation}
-elevation 
+elevation = get_elev_raster(boundary,
+                            z = 14) %>%
+  st_as_stars() %>%
+  st_crop(boundary)
 
 elevation
 
@@ -207,24 +224,44 @@ A few notes on the **second pane** printed above:
 - `delta` is the raster resolution (i.e., 3.99 m in this case)  
 - `refsys` is the CRS of the layer (i.e., WGS 84)  
 
-What happens to `delta` if we chanfe the `z` value to 13?  
+What happens to `delta` if we change the `z` value to 13?  
 
 Make sure to change it back to 14 after testing it.  
 
 Now, let's plot it.
 
 ```{r interactive elevation}
-
+mapview(elevation)
 ```
 
+From here, we can see that the elevation is higher on the left and lower on the right showing that the direction of water will be from left to right towards the east.
+
+NOTE: Raster will always be rectangle, a continuous space with no empty cells so anything outside of the boundary was set to NA in the elevation raster. The cells are still there but they do not have data, nothing was assigned to it. Vectors are not continuous like raster. Vectors can be completely empty, not like raster which the cells are present but with no data.
+
 ```{r static elevation}
-elevation_map 
+elevation_map = ggplot() +
+  geom_stars(data = elevation) +
+  coord_equal() +
+  scale_fill_viridis_c(option = "B", na.value = "white") +
+  theme_map() +
+  labs(fill = "Elevation (m)") +
+  theme(legend.position = "right")
 
 elevation_map
 ```
 
 # Combining and exporting maps  
 ```{r}
+series_map + yield_map + elevation_map +
+  plot_annotation(title = "Soil series (a), Cotton yield (b), and elevation (c)",
+                  tag_levels = "a",
+                  tag_suffix = ")"
+                  ) &
+  theme(plot.title = element_text(size = 20,
+                                  hjust = 0.5))
+ggsave("../ouput/combined_maps.png",
+       width = 12,
+       height = 5)
 
 ```
 
