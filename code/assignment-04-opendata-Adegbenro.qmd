@@ -34,6 +34,8 @@ Find an agricultural field of your interest. This could be a field from a farm y
 - longitude: -84.2968798
 - latitude: 31.2831540 
 
+This field is located at the Camilla Stripling Irrigation Station, in Camilla Georgia.
+
 # Setup  
 Use this section to load the necessary packages. Remember, you will to do digitizing AND open data retrieval in this same script.  
 
@@ -52,12 +54,16 @@ library(ggthemes) # for theme_map()
 library(patchwork) # combine multiple plots
 library(leaflet.extras) # for digitizing drawing tool bar  
 library(mapedit) # for creating the boundary
+library(magick)
 ```
 
 # Digitizing  
 Use this section to digitize AND export to file (as .geojson) the boundary of your selected field. When exporting the boundary, make sure to export it to the `output` folder.  
 
 ```{r centroid}
+#| message: false
+#| warning: false
+
 # A bit of wrangling
 centroid = data.frame(lon = -84.2968798,
                       lat = 31.2831540) %>%
@@ -75,7 +81,7 @@ digitizing
 
 # digitize the boundary and save as boundary
 #boundary = editMap(digitizing)
-boundary
+#boundary
 
 # extract the finished component
 #boundary_w  = boundary$finished
@@ -91,12 +97,15 @@ boundary
 **NOTE**: right before you render this script for submission, comment off the digitizing code so it does not run when rendering. You will need to write a code to import your previously-created boundary at the time of rendering (I'll demo this).  
 
 ```{r boundary}
+#| message: false
+#| warning: false
+
 sf::sf_use_s2(FALSE) # had an error so ran this line of code to turn off the S2 Geometry Engine.
 
 boundary_n = read_sf("../../06_opendata/ouput/boundary-n.geojson")
 
-boundary_n
-mapview(boundary_n)
+mapview(boundary_n,
+        map.types = "Esri.WorldImagery")
 ```
 
 # Soil series  
@@ -116,13 +125,12 @@ soils_n = get_ssurgo(boundary_n,
 ## Question 2) How many different soil series were found in this field? What is their names?  
 
 ```{r soils series}
-soils_n$spatial
-
-soils_n$tabular$muaggatt
+soils_n$tabular$muaggatt %>%
+  select(musym, muname)
 ```
 There is only one soil series for this field and it is called the Lucy loamy sand, with 0 to 5 percent slopes.
 
-```{r series_sf}
+```{r creating the series_sf}
 #| warning: false
 #| message: false
 
@@ -137,19 +145,25 @@ series_sf <-
   left_join(soils_n$tabular$muaggatt, by = "musym") %>%
 
     # Cropping to the boundary
-  st_intersection(boundary_n)
+  st_intersection(boundary_n) 
 
 series_sf
 ```
 
 
 ```{r interactive soil series}
+#| warning: false
+#| message: false
+
 mapview(series_sf,
-        zcol = "muname")
+        zcol = "muname",
+        map.types = "Esri.WorldImagery")
 ```
 
 
-```{r static soil series}
+This shows an interactive map of the soil series. This field is a uniform one with no variability in the soil series.
+
+```{r static soil series map}
 series_map = ggplot() +
   geom_sf(data = boundary_n, alpha = 0.5) +
   geom_sf(data = series_sf,
@@ -165,20 +179,25 @@ series_map = ggplot() +
 
 series_map
 ```
+Since we have only one soil series, the color scale for the soil series static map shows only one color, depicting uniformity across the field. This means the field is dominated by only one soil type (Lucy loamy sand, 0-5% slopes).
 
 ## Question 3) Was there yield data available for any crop for the soil series within your field? List below which crops had yield data available.
 
 
 ```{r soils tabular}
-soils_n$tabular$mucropyld
+soils_n$tabular$mucropyld %>%
+  head()
 ```
 
-Crops with yield values are: warm season grasses, wheat, peanuts, corn, cotton, grain sorghum, alfalfa, bahiagrass hay, grass hay, bahiagrass, cool season grasses, improved bermudagrass and soybeans. All crops had yield data for non-irrigated but not irrigated yields.
+Crops with yield values are: warm season grasses, wheat, peanuts, corn, cotton, grain sorghum, alfalfa, bahiagrass hay, grass hay, bahiagrass, cool season grasses, improved bermudagrass and soybeans. All crops have yield data for non-irrigated but not irrigated yields.
 
 ## Question 4) IF your field had data for crop yield, choose one crop only. List below what was the crop you selected, and what were the different values of yield for the selected crop for these different soil series (if your field had no crop yield data, than explain so).   
 
+Choosing the crop, Soybeans to create the yield sf object, and subsequently yield map.
+```{r creating the yield_sf }
+#| warning: false
+#| message: false
 
-```{r yield_sf }
 yield_sf <- 
   # Starting with the spatial component, currently an sp object
   soils_n$spatial %>% 
@@ -198,15 +217,21 @@ yield_sf <-
   filter(cropname=="Soybeans")
 
 yield_sf 
-
 ```
 
+The table above presents only one yield value (32 lb) for soybeans.
 
 ```{r interactive yield}
+#| warning: false
+#| message: false
+
 mapview(yield_sf,
-        zcol = "nonirryield.r")
+        zcol = "nonirryield.r",
+        map.types = "Esri.WorldImagery")
 ```
 
+
+Due to having one soil series, the yield is also presented as constant across the field with no variation.
 
 ```{r static yield }
 yield_map <- ggplot() +
@@ -219,6 +244,7 @@ yield_map <- ggplot() +
 
 yield_map
 ```
+This is a static yield map for soybeans, which indicates a nearly constant yield across the field, with values ranging from 31.95 to 32.05 lb/ac. The lack of spatial variability means no distinct productivity zones are visible, suggesting highly uniform field performance, supported by the single soil zone as seen above.
 
 # Elevation  
 Use this section to:   
@@ -227,7 +253,10 @@ Use this section to:
   - perform the required wrangling steps, and  
   - create a map for elevation  
   
-```{r elevation}
+```{r getting elevation data}
+#| warning: false
+#| message: false
+
 elevation = get_elev_raster(boundary_n,
                             z = 14) %>%
   st_as_stars() %>%
@@ -235,9 +264,16 @@ elevation = get_elev_raster(boundary_n,
 
 elevation
 ```
+From the summary above, the elevation of this field ranged from 49.94 to 51.69 m, with a mean and median of 50.59 m and 50.53 m, respectively, indicating a very low-relief and relatively uniform landscape. This shows minimal topographic variation.
 
+```{r interactive elevation map}
+#| warning: false
+#| message: false
 
-```{r static elevation}
+mapview(elevation)
+```
+
+```{r creating static elevation map}
 elevation_map = ggplot() +
   geom_stars(data = elevation) +
   coord_equal() +
@@ -248,26 +284,35 @@ elevation_map = ggplot() +
 
 elevation_map
 ```
-  
+The static elevation map above shows gradual change in elevation of the field. Elevation values range from approximately 50.0 m to 51.6 m, as indicated by the legend. The northwestern end of the field (upper left) is at the highest elevation, represented by yellow and orange tones, while elevation steadily decreases toward the southeastern end (lower right), where darker purple and black colors indicate the lowest areas. This is consistent with the nearly level to gentle slope (1-5%) in the soil series.
+
+This pattern reveals a consistent slope across the field, rather than isolated depressions or mounds. The smooth color transition suggests minimal abrupt topographic changes and confirms that the landscape has low overall relief, and the total elevation difference is small (~1.75 m).
+
 # Combining and exporting maps  
 Use this section to combine your individual static maps above into one, and export it to file.  
 
 ```{r}
-series_map + yield_map + elevation_map +
-  plot_annotation(title = "Soil series (a), Cotton yield (b), and elevation (c)",
-                  tag_levels = "a",
-                  tag_suffix = ")"
-                  ) &
-  theme(plot.title = element_text(size = 20,
-                                  hjust = 0.5))
-ggsave("../ouput/combined_maps_ass.png",
-       width = 12,
-       height = 5)
+#| warning: false
+#| message: false
 
+#series_map + yield_map + elevation_map +
+  #plot_annotation(title = "Soil series (a), Cotton yield (b), and elevation (c)",
+                  #tag_levels = "a",
+                  #tag_suffix = ")"
+                 # ) &
+  #theme(plot.title = element_text(size = 20,
+                                  #hjust = 0.5))
+#ggsave("../ouput/combined_maps_ass.png",
+       #width = 12,
+       #height = 6)
+
+combined_maps = image_read("../ouput/combined_maps_ass.png")
+print(combined_maps, info = FALSE)
 ```
 
 ## Question 5) Now that you can visualize all three maps together, try to explain the effect of soil series and elevation on crop yield. Which soil and elevation conditions seem to promote higher yields in this field?  
 
+The soil map shows that the entire field had a single soil series (Lucy loamy sand), so there is no soil variability to drive spatial differences in yield. Although elevation varies a bit across the field, the total relief is only about 1.75 m and forms a smooth, uniform slope. This small change in elevation was probably insufficient to create meaningful differences in water redistribution and overall yield. As a result, the yield map shows almost no spatial variability and does not correspond to either soil or elevation. This indicates that the field performed uniformly across all areas.
 
 # Submitting your work  
 Once you have developed all the code and answers, make sure to Render this quarto file.  
@@ -280,7 +325,7 @@ Once you have developed all the code and answers, make sure to Render this quart
   - **DO NOT** delete the file's heading levels (# and ##). They set up the proper heading 1 and 2 levels, and I use them to guide my grading.  
   - If a given chunk is also outputting warnings or messages, inhibit this behavior by changing the chunk options `message` and `warning` to `FALSE` (I'll demo this in a moment).  
   
-  - If, after rendered, 2 lines of text are connected and you wish to "break line" between them, add 2 extra spaces after the first one (I'lld demo this in a moment).  
+  - If, after rendered, 2 lines of text are connected and you wish to "break line" between them, add 2 extra spaces after the first one (I'll demo this in a moment).  
 
 After rendering, an .html file will be created on your `code` folder.  
 
